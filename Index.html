@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VK Idle Clicker</title>
+    <script src="https://unpkg.com"></script>
+    <style>
+        :root {
+            --bg-color: #edeef0;
+            --text-color: #2c3e50;
+            --card-bg: #ffffff;
+            --accent-color: #4a76a8;
+        }
+        body.dark-mode {
+            --bg-color: #19191a;
+            --text-color: #e1e3e6;
+            --card-bg: #222223;
+            --accent-color: #71aaeb;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: -apple-system, system-ui, sans-serif;
+            overflow: hidden;
+            transition: background 0.3s;
+            user-select: none;
+            touch-action: none;
+        }
+        .score-container { font-size: 36px; font-weight: bold; margin-bottom: 5px; }
+        #levelDisplay { font-size: 18px; opacity: 0.8; margin-bottom: 15px; }
+        
+        #clickBtn {
+            width: 180px; height: 180px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-color), #3b5d85);
+            border: 6px solid #fff;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 70px;
+            transition: transform 0.05s;
+            z-index: 10;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #clickBtn:active { transform: scale(0.92); }
+
+        .ui-group { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; width: 260px; }
+        .upgrade-btn {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid rgba(0,0,0,0.1);
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+        .upgrade-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .energy-bar-bg { width: 100%; height: 10px; background: #dce1e6; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+        #energyBarFill { height: 100%; width: 100%; background: var(--accent-color); transition: width 0.3s; }
+
+        .floating-text { position: fixed; font-weight: bold; pointer-events: none; animation: moveUp 0.8s forwards; z-index: 100; }
+        @keyframes moveUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-100px); opacity: 0; } }
+        
+        .particle { position: fixed; width: 6px; height: 6px; border-radius: 50%; animation: explode 0.6s forwards; z-index: 99; }
+        @keyframes explode { 100% { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+
+        #themeToggle { position: absolute; top: 20px; right: 20px; font-size: 24px; cursor: pointer; }
+        
+        .modal {
+            display: none; position: fixed; top:0; left:0; width:100%; height:100%; 
+            background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;
+        }
+        .modal-content { background: var(--card-bg); padding: 30px; border-radius: 20px; text-align: center; width: 80%; max-width: 300px; }
+    </style>
+</head>
+<body>
+
+    <div id="themeToggle">🌓</div>
+    <div class="score-container">💰 <span id="score">0</span></div>
+    <div id="levelDisplay">Уровень: 1</div>
+    
+    <div style="width: 200px; text-align: center;">
+        ⚡ <span id="energyValue">100</span>/100
+        <div class="energy-bar-bg"><div id="energyBarFill"></div></div>
+    </div>
+
+    <div id="clickBtn">🪙</div>
+
+    <div class="ui-group">
+        <button class="upgrade-btn" id="buyAutoClicker">
+            🤖 Автокликер (+1/сек)<br>
+            <span style="font-size: 12px;">Цена: <span id="autoPrice">15</span> 💰</span>
+        </button>
+        <button class="upgrade-btn" id="leaderboardBtn">🏆 Лидеры</button>
+        <button class="upgrade-btn" id="shareBtn" style="background: var(--accent-color); color: white;">📢 Поделиться рекордом</button>
+        <button class="upgrade-btn" id="adBtn" style="background: #27ae60; color: white;">📺 +50 Энергии (Реклама)</button>
+    </div>
+
+    <!-- Модальные окна -->
+    <div id="bonusModal" class="modal"><div class="modal-content"><h2>🎁 Бонус!</h2><p id="bonusText"></p><button class="upgrade-btn" onclick="closeModal('bonusModal')">Забрать</button></div></div>
+    <div id="offlineModal" class="modal"><div class="modal-content"><h2>🌙 С возвращением!</h2><p id="offlineText"></p><button class="upgrade-btn" onclick="closeModal('offlineModal')">Отлично!</button></div></div>
+    <div id="levelUpMsg" style="display: none; position: fixed; font-size: 40px; color: #ffc107; font-weight: bold; z-index: 200; text-shadow: 2px 2px 10px rgba(0,0,0,0.5);">LEVEL UP!</div>
+
+<script>
+    vkBridge.send("VKWebAppInit");
+
+    // Инициализация данных
+    let score = parseInt(localStorage.getItem('score')) || 0;
+    let energy = parseInt(localStorage.getItem('energy')) || 100;
+    let level = parseInt(localStorage.getItem('level')) || 1;
+    let autoClickers = parseInt(localStorage.getItem('autoClickers')) || 0;
+    let autoPrice = Math.round(15 * Math.pow(1.5, autoClickers));
+    const maxEnergy = 100;
+
+    const scoreEl = document.getElementById('score');
+    const energyEl = document.getElementById('energyValue');
+    const levelEl = document.getElementById('levelDisplay');
+    const autoPriceEl = document.getElementById('autoPrice');
+    const btn = document.getElementById('clickBtn');
+
+    function updateDisplay() {
+        scoreEl.innerText = Math.floor(score);
+        energyEl.innerText = Math.floor(energy);
+        levelEl.innerText = `Уровень: ${level}`;
+        autoPriceEl.innerText = autoPrice;
+        document.getElementById('energyBarFill').style.width = (energy / maxEnergy * 100) + '%';
+        document.getElementById('buyAutoClicker').disabled = score < autoPrice;
+        
+        localStorage.setItem('score', score);
+        localStorage.setItem('energy', energy);
+        localStorage.setItem('level', level);
+        localStorage.setItem('autoClickers', autoClickers);
+        localStorage.setItem('lastSeen', Date.now().toString());
+    }
+
+    // Обработка клика
+    function handleAction(e) {
+        if (energy >= 1) {
+            score++;
+            energy--;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            createFloatingText(clientX, clientY, "+1");
+            createParticles(clientX, clientY);
+            checkLevelUp();
+            updateDisplay();
+            vkBridge.send("VKWebAppTapticImpactOccurred", {"style": "light"}).catch(()=>{});
+        }
+    }
+
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(e); }, {passive: false});
+    btn.addEventListener('click', (e) => { if (e.pointerType !== 'touch') handleAction(e); });
+
+    // Покупка автокликера
+    document.getElementById('buyAutoClicker').onclick = () => {
+        if (score >= autoPrice) {
+            score -= autoPrice;
+            autoClickers++;
+            autoPrice = Math.round(15 * Math.pow(1.5, autoClickers));
+            updateDisplay();
+            vkBridge.send("VKWebAppTapticImpactOccurred", {"style": "medium"}).catch(()=>{});
+        }
+    };
+
+    // Автоклик и оффлайн доход
+    setInterval(() => {
+        if (autoClickers > 0) {
+            score += autoClickers;
+            updateDisplay();
+        }
+    }, 1000);
+
+    function checkOfflineIncome() {
+        const lastSeen = localStorage.getItem('lastSeen');
+        if (lastSeen && autoClickers > 0) {
+            const secondsOffline = Math.floor((Date.now() - parseInt(lastSeen)) / 1000);
+            const cappedSeconds = Math.min(secondsOffline, 14400); // 4 часа
+            const income = cappedSeconds * autoClickers;
+            if (income > 0) {
+                score += income;
+                const hrs = Math.floor(cappedSeconds / 3600);
+                const mins = Math.floor((cappedSeconds % 3600) / 60);
+                document.getElementById('offlineText').innerText = `Вас не было ${hrs}ч ${mins}м. Доход: ${income} 💰`;
+                document.getElementById('offlineModal').style.display = 'flex';
+                updateDisplay();
+            }
+        }
+    }
+
+    // Уровни
+    function checkLevelUp() {
+        const nextLevelThreshold = level * (level + 1) * 25;
+        if (score >= nextLevelThreshold) {
+            level++;
+            energy = maxEnergy;
+            const msg = document.getElementById('levelUpMsg');
+            msg.style.display = 'block';
+            msg.style.left = '50%'; msg.style.top = '50%';
+            msg.style.transform = 'translate(-50%, -50%)';
+            setTimeout(() => msg.style.display = 'none', 1500);
+        }
+    }
+
+    // Энергия
+    setInterval(() => { if (energy < maxEnergy) { energy++; updateDisplay(); } }, 2500);
+
+    // Визуальные эффекты
+    function createFloatingText(x, y, text) {
+        const el = document.createElement("div");
+        el.className = "floating-text"; el.innerText = text;
+        el.style.left = `${x}px`; el.style.top = `${y}px`;
+        el.style.color = document.body.classList.contains('dark-mode') ? '#71aaeb' : '#4a76a8';
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 800);
+    }
+
+    function createParticles(x, y) {
+        for (let i = 0; i < 6; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle'; p.style.backgroundColor = '#4a76a8';
+            p.style.left = x + 'px'; p.style.top = y + 'px';
+            p.style.setProperty('--dx', (Math.random() - 0.5) * 120 + 'px');
+            p.style.setProperty('--dy', (Math.random() - 0.5) * 120 + 'px');
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 600);
+        }
+    }
+
+    // VK Bridge функции
+    document.getElementById('leaderboardBtn').onclick = () => vkBridge.send("VKWebAppShowLeaderBoardBox", {"user_result": score}).catch(()=>{});
+    document.getElementById('shareBtn').onclick = () => vkBridge.send("VKWebAppShowWallPostBox", {"message": `Мой счет: ${score} 💰 Уровень: ${level}`}).catch(()=>{});
+    document.getElementById('adBtn').onclick = () => {
+        vkBridge.send("VKWebAppShowNativeAds", {"ad_format": "reward"})
+            .then(data => { if(data.result) { energy = Math.min(maxEnergy, energy + 50); updateDisplay(); } })
+            .catch(()=>alert("Реклама недоступна"));
+    };
+
+    // Темы и Бонусы
+    document.getElementById('themeToggle').onclick = () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('dark', document.body.classList.contains('dark-mode'));
+    };
+
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    window.onload = () => {
+        if(localStorage.getItem('dark') === 'true') document.body.classList.add('dark-mode');
+        checkOfflineIncome();
+        const today = new Date().toDateString();
+        if (localStorage.getItem('lastBonus') !== today) {
+            score += 500;
+            document.getElementById('bonusText').innerText = "Держи 500 монет за вход!";
+            document.getElementById('bonusModal').style.display = "flex";
+            localStorage.setItem('lastBonus', today);
+        }
+        updateDisplay();
+    };
+</script>
+</body>
+</html>
