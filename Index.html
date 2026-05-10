@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VK Clicker Final</title>
-    <!-- 1. Правильное подключение VK Bridge -->
+    <title>VK Clicker — Престиж</title>
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <style>
         :root { --bg-color: #edeef0; --text-color: #2c3e50; --card-bg: #ffffff; --accent-color: #4a76a8; }
@@ -15,8 +14,45 @@
             height: 100vh; margin: 0; font-family: -apple-system, sans-serif;
             overflow: hidden; touch-action: none; -webkit-user-select: none;
         }
+        /* Стили лоадера (показывается первым) */
+        #app-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 10000;
+            transition: opacity 0.5s ease;
+        }
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 5px solid var(--accent-color);
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loader-text { margin-top: 15px; color: var(--text-color); font-size: 16px; }
+        
+        /* Основной контент изначально скрыт (покажется после инициализации) */
+        .main-content {
+            visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        
         .score-container { font-size: 36px; font-weight: bold; margin-bottom: 5px; }
-        #levelDisplay { font-size: 18px; opacity: 0.8; margin-bottom: 15px; }
+        #levelDisplay { font-size: 18px; opacity: 0.8; margin-bottom: 5px; }
+        #prestigeInfo { font-size: 14px; opacity: 0.7; margin-bottom: 15px; }
         #clickBtn {
             width: 180px; height: 180px; border-radius: 50%;
             background: linear-gradient(135deg, var(--accent-color), #3b5d85);
@@ -40,53 +76,96 @@
         #themeToggle { position: absolute; top: 20px; right: 20px; font-size: 24px; cursor: pointer; }
         .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: var(--card-bg); padding: 30px; border-radius: 20px; text-align: center; width: 80%; max-width: 300px; }
+        .prestige-badge { font-weight: bold; color: gold; }
     </style>
 </head>
 <body>
 
-    <div id="themeToggle">🌓</div>
-    <div class="score-container">💰 <span id="score">0</span></div>
-    <div id="levelDisplay">Уровень: 1</div>
-    
-    <div style="width: 200px; text-align: center;">
-        ⚡ <span id="energyValue">100</span>/100
-        <div class="energy-bar-bg"><div id="energyBarFill"></div></div>
+    <!-- Лоадер (показывается сразу) -->
+    <div id="app-loader">
+        <div class="spinner"></div>
+        <div class="loader-text">Загрузка приложения...</div>
     </div>
 
-    <div id="clickBtn">🪙</div>
+    <!-- Основной контент игры (скрыт до инициализации) -->
+    <div class="main-content">
+        <div id="themeToggle">🌓</div>
+        <div class="score-container">💰 <span id="score">0</span></div>
+        <div id="levelDisplay">Уровень: 1</div>
+        <div id="prestigeInfo">✨ Престижей: <span id="prestigeCount">0</span> | Множитель: ×<span id="multiplierDisplay">1.00</span></div>
+        
+        <div style="width: 200px; text-align: center;">
+            ⚡ <span id="energyValue">100</span>/100
+            <div class="energy-bar-bg"><div id="energyBarFill"></div></div>
+        </div>
 
-    <div class="ui-group">
-        <button class="upgrade-btn" id="buyAutoClicker">🤖 Автокликер (+1/с) <br> <small>Цена: <span id="autoPrice">15</span></small></button>
-        <button class="upgrade-btn" id="leaderboardBtn">🏆 Лидеры</button>
-        <button class="upgrade-btn" id="shareBtn">📢 Поделиться</button>
-        <button class="upgrade-btn" id="adBtn" style="background:#27ae60; color:#fff; border:none;">📺 +50 Энергии</button>
+        <div id="clickBtn">🪙</div>
+
+        <div class="ui-group">
+            <button class="upgrade-btn" id="buyAutoClicker">🤖 Автокликер (+1/с) <br> <small>Цена: <span id="autoPrice">15</span></small></button>
+            <button class="upgrade-btn" id="prestigeBtn" style="background: linear-gradient(135deg, #ffd700, #b8860b); color:#2c3e50;">🌟 ПРЕСТИЖ</button>
+            <button class="upgrade-btn" id="leaderboardBtn">🏆 Лидеры</button>
+            <button class="upgrade-btn" id="shareBtn">📢 Поделиться</button>
+            <button class="upgrade-btn" id="adBtn" style="background:#27ae60; color:#fff; border:none;">📺 +50 Энергии</button>
+        </div>
     </div>
 
+    <!-- Модальные окна -->
     <div id="bonusModal" class="modal"><div class="modal-content"><h2>🎁 Бонус!</h2><p id="bonusText"></p><button class="upgrade-btn" onclick="window.closeModal('bonusModal')">ОК</button></div></div>
     <div id="offlineModal" class="modal"><div class="modal-content"><h2>🌙 С возвращением!</h2><p id="offlineText"></p><button class="upgrade-btn" onclick="window.closeModal('offlineModal')">Забрать</button></div></div>
     <div id="levelUpMsg" style="display:none; position:fixed; font-size:40px; color:#ffc107; font-weight:bold; z-index:200;">LEVEL UP!</div>
+    <div id="prestigeModal" class="modal"><div class="modal-content"><h2>🌟 ПРЕСТИЖ</h2><p id="prestigeModalText"></p><button class="upgrade-btn" id="confirmPrestigeBtn">ДА, СБРОСИТЬ ВСЁ</button><button class="upgrade-btn" id="cancelPrestigeBtn" style="margin-top:10px;">ОТМЕНА</button></div></div>
 
 <script>
-    // --- ДАННЫЕ ---
+    // ======================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ИГРЫ ========================
     let score = parseInt(localStorage.getItem('score')) || 0;
     let energy = parseInt(localStorage.getItem('energy')) || 100;
     let level = parseInt(localStorage.getItem('level')) || 1;
     let autoClickers = parseInt(localStorage.getItem('autoClickers')) || 0;
-    let autoPrice = Math.round(15 * Math.pow(1.5, autoClickers));
+    let prestigeLevel = parseInt(localStorage.getItem('prestigeLevel')) || 0;
     const maxEnergy = 100;
+    
+    function getIncomeMultiplier() {
+        return 1 + prestigeLevel * 0.3;
+    }
+    
+    function getAutoPrice() {
+        return Math.round(15 * Math.pow(1.5, autoClickers));
+    }
+    let autoPrice = getAutoPrice();
 
+    function getRequiredPrestigeLevel() {
+        return 30 + prestigeLevel * 5;
+    }
+    
+    // DOM элементы
     const scoreEl = document.getElementById('score');
     const energyEl = document.getElementById('energyValue');
     const levelEl = document.getElementById('levelDisplay');
     const autoPriceEl = document.getElementById('autoPrice');
     const btn = document.getElementById('clickBtn');
-
-    // Вспомогательная функция для получения требуемого опыта для уровня
+    const prestigeCountSpan = document.getElementById('prestigeCount');
+    const multiplierDisplaySpan = document.getElementById('multiplierDisplay');
+    const prestigeBtn = document.getElementById('prestigeBtn');
+    
+    // ======================== ИГРОВЫЕ ФУНКЦИИ ========================
+    function updatePrestigeUI() {
+        prestigeCountSpan.innerText = prestigeLevel;
+        multiplierDisplaySpan.innerText = getIncomeMultiplier().toFixed(2);
+        const required = getRequiredPrestigeLevel();
+        if (level >= required) {
+            prestigeBtn.disabled = false;
+            prestigeBtn.innerText = `🌟 ПРЕСТИЖ (доступно с ур.${required}) | ×${getIncomeMultiplier().toFixed(2)} сейчас → ×${(getIncomeMultiplier() + 0.3).toFixed(2)}`;
+        } else {
+            prestigeBtn.disabled = true;
+            prestigeBtn.innerText = `🌟 ПРЕСТИЖ (нужен ур.${required})`;
+        }
+    }
+    
     function getRequiredXP(lvl) {
         return lvl * (lvl + 1) * 25;
     }
-
-    // Проверка и повышение уровня (цикл, чтобы не пропустить несколько уровней)
+    
     function checkAndApplyLevelUp() {
         let leveled = false;
         while (score >= getRequiredXP(level)) {
@@ -97,61 +176,49 @@
         }
         if (leveled) {
             updateDisplay();
+            updatePrestigeUI();
         }
     }
-
+    
     function updateDisplay() {
         scoreEl.innerText = Math.floor(score);
         energyEl.innerText = Math.floor(energy);
         levelEl.innerText = `Уровень: ${level}`;
+        autoPrice = getAutoPrice();
         autoPriceEl.innerText = autoPrice;
         document.getElementById('energyBarFill').style.width = (energy / maxEnergy * 100) + '%';
         document.getElementById('buyAutoClicker').disabled = score < autoPrice;
+        updatePrestigeUI();
         
         localStorage.setItem('score', score);
         localStorage.setItem('energy', energy);
         localStorage.setItem('level', level);
         localStorage.setItem('autoClickers', autoClickers);
-        // lastSeen теперь сохраняется отдельно (в beforeunload)
+        localStorage.setItem('prestigeLevel', prestigeLevel);
     }
-
-    // --- ЛОГИКА КЛИКА ---
+    
     function handleAction(e) {
         if (energy >= 1) {
-            score++;
+            let gain = 1 * getIncomeMultiplier();
+            score += gain;
             energy--;
-            // Получаем координаты для визуальных эффектов
             let x, y;
-            if (e.clientX) {
-                x = e.clientX; y = e.clientY;
-            } else if (e.touches && e.touches[0]) {
-                x = e.touches[0].clientX;
-                y = e.touches[0].clientY;
-            } else {
-                // fallback (центр кнопки)
-                const rect = btn.getBoundingClientRect();
-                x = rect.left + rect.width / 2;
-                y = rect.top + rect.height / 2;
-            }
-            createFloatingText(x, y, "+1");
+            if (e.clientX) { x = e.clientX; y = e.clientY; }
+            else if (e.touches && e.touches[0]) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
+            else { const rect = btn.getBoundingClientRect(); x = rect.left + rect.width/2; y = rect.top + rect.height/2; }
+            createFloatingText(x, y, `+${gain.toFixed(1)}`);
             createParticles(x, y);
-            
-            // Проверка уровня (с автоматическим повышением)
             checkAndApplyLevelUp();
-            
             updateDisplay();
-            
-            // Тактильный отклик VK (безопасно)
             if (typeof vkBridge !== 'undefined') {
                 vkBridge.send("VKWebAppTapticImpactOccurred", {"style": "light"}).catch(()=>{});
             }
         } else {
-            // Визуальный фидбек при нехватке энергии
             const rect = btn.getBoundingClientRect();
             createFloatingText(rect.left + rect.width/2, rect.top + rect.height/2, "⚠️ Нет энергии", "#e67e22");
         }
     }
-
+    
     function showLevelUp() {
         const msg = document.getElementById('levelUpMsg');
         msg.style.display = 'block';
@@ -159,43 +226,8 @@
         msg.style.transform = 'translate(-50%, -50%)';
         setTimeout(() => msg.style.display = 'none', 1500);
     }
-
-    // Обработчики кнопки с поддержкой тач и мыши (без лишнего preventDefault)
-    btn.addEventListener('touchstart', (e) => {
-        // preventDefault не нужен из-за touch-action: none, но оставим для уверенности в старых браузерах
-        e.preventDefault();
-        handleAction(e);
-    }, { passive: false });
-    btn.addEventListener('click', (e) => {
-        if (e.pointerType !== 'touch') handleAction(e);
-    });
-
-    // Автокликер
-    document.getElementById('buyAutoClicker').onclick = () => {
-        if (score >= autoPrice) {
-            score -= autoPrice;
-            autoClickers++;
-            autoPrice = Math.round(15 * Math.pow(1.5, autoClickers));
-            updateDisplay();
-        }
-    };
-
-    setInterval(() => {
-        if (autoClickers > 0) {
-            score += autoClickers;
-            checkAndApplyLevelUp(); // чтобы авто-кликер тоже повышал уровень
-            updateDisplay();
-        }
-    }, 1000);
     
-    setInterval(() => {
-        if (energy < maxEnergy) {
-            energy++;
-            updateDisplay();
-        }
-    }, 2500);
-
-    // --- ЭФФЕКТЫ ---
+    // Эффекты
     function createFloatingText(x, y, text, customColor = null) {
         const el = document.createElement("div");
         el.className = "floating-text";
@@ -206,7 +238,7 @@
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 800);
     }
-
+    
     function createParticles(x, y) {
         for (let i = 0; i < 6; i++) {
             const p = document.createElement('div');
@@ -220,99 +252,192 @@
             setTimeout(() => p.remove(), 600);
         }
     }
-
-    // --- VK BRIDGE (безопасная инициализация) ---
-    function initVKBridge() {
-        if (typeof vkBridge !== 'undefined') {
-            vkBridge.ready().then(() => {
-                vkBridge.send("VKWebAppInit").catch(e => console.error("Bridge init error:", e));
-            }).catch(e => console.error("Bridge ready error:", e));
-        } else {
-            console.warn("VK Bridge не загружен, функции VK будут недоступны");
-        }
+    
+    // Престиж
+    function performPrestige() {
+        const requiredLvl = getRequiredPrestigeLevel();
+        if (level < requiredLvl) return;
+        score = 0;
+        level = 1;
+        autoClickers = 0;
+        energy = maxEnergy;
+        prestigeLevel++;
+        autoPrice = getAutoPrice();
+        updateDisplay();
+        updatePrestigeUI();
+        createFloatingText(window.innerWidth/2, window.innerHeight/2, `✨ ПРЕСТИЖ ${prestigeLevel}!\nМножитель ×${getIncomeMultiplier().toFixed(2)}`, "#ffd700");
+        localStorage.setItem('prestigeLevel', prestigeLevel);
+        closeModal('prestigeModal');
     }
     
-    // Вызов инициализации после загрузки страницы
-    window.addEventListener('load', initVKBridge);
+    // Подключение обработчиков
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(e); }, { passive: false });
+    btn.addEventListener('click', (e) => { if (e.pointerType !== 'touch') handleAction(e); });
     
-    // Кнопки лидеров, поделиться, реклама с проверкой на vkBridge
-    document.getElementById('leaderboardBtn').onclick = () => {
-        if (typeof vkBridge !== 'undefined') {
-            vkBridge.send("VKWebAppShowLeaderBoardBox", {user_result: Math.floor(score)}).catch(()=>{});
-        } else {
-            alert("Функция доступна только в VK Mini App");
+    document.getElementById('buyAutoClicker').onclick = () => {
+        if (score >= autoPrice) {
+            score -= autoPrice;
+            autoClickers++;
+            autoPrice = getAutoPrice();
+            updateDisplay();
         }
     };
-    document.getElementById('shareBtn').onclick = () => {
-        if (typeof vkBridge !== 'undefined') {
-            vkBridge.send("VKWebAppShowWallPostBox", {message: `Мой счет: ${Math.floor(score)}!`}).catch(()=>{});
-        } else {
-            alert("Функция доступна только в VK Mini App");
+    
+    setInterval(() => {
+        if (autoClickers > 0) {
+            let autoGain = autoClickers * getIncomeMultiplier();
+            score += autoGain;
+            checkAndApplyLevelUp();
+            updateDisplay();
         }
+    }, 1000);
+    
+    setInterval(() => {
+        if (energy < maxEnergy) { energy++; updateDisplay(); }
+    }, 2500);
+    
+    // Модалки престижа
+    const prestigeModal = document.getElementById('prestigeModal');
+    prestigeBtn.onclick = () => {
+        if (level >= getRequiredPrestigeLevel()) {
+            document.getElementById('prestigeModalText').innerHTML = `Сбросите прогресс до уровня 1, обнулите автокликеры и очки.<br><strong>НО</strong> получите <strong style="color:gold;">+30%</strong> к доходу навсегда!<br>Текущий множитель: ×${getIncomeMultiplier().toFixed(2)} → ×${(getIncomeMultiplier()+0.3).toFixed(2)}<br>Уровень престижа станет ${prestigeLevel+1}.`;
+            prestigeModal.style.display = 'flex';
+        }
+    };
+    document.getElementById('confirmPrestigeBtn').onclick = () => performPrestige();
+    document.getElementById('cancelPrestigeBtn').onclick = () => closeModal('prestigeModal');
+    
+    // Кнопки VK
+    document.getElementById('leaderboardBtn').onclick = () => {
+        if (typeof vkBridge !== 'undefined') vkBridge.send("VKWebAppShowLeaderBoardBox", {user_result: Math.floor(score)}).catch(()=>{});
+        else alert("Доступно только в VK Mini App");
+    };
+    document.getElementById('shareBtn').onclick = () => {
+        if (typeof vkBridge !== 'undefined') vkBridge.send("VKWebAppShowWallPostBox", {message: `Мой счёт: ${Math.floor(score)}! Множитель x${getIncomeMultiplier().toFixed(2)}`}).catch(()=>{});
+        else alert("Доступно только в VK Mini App");
     };
     document.getElementById('adBtn').onclick = () => {
         if (typeof vkBridge !== 'undefined') {
-            vkBridge.send("VKWebAppShowNativeAds", {ad_format: "reward"})
-                .then(data => { if(data.result) { energy = Math.min(maxEnergy, energy + 50); updateDisplay(); } })
-                .catch(()=>{});
-        } else {
-            alert("Реклама доступна только в VK Mini App");
-        }
+            vkBridge.send("VKWebAppShowNativeAds", {ad_format: "reward"}).then(data => { if(data.result) { energy = Math.min(maxEnergy, energy + 50); updateDisplay(); } }).catch(()=>{});
+        } else alert("Реклама доступна только в VK Mini App");
     };
-
-    // --- Тема и модалки ---
+    
+    // Тёмная тема
     document.getElementById('themeToggle').onclick = () => {
         document.body.classList.toggle('dark-mode');
         localStorage.setItem('dark', document.body.classList.contains('dark-mode'));
     };
+    window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
     
-    window.closeModal = function(id) {
-        document.getElementById(id).style.display = 'none';
-    };
-
-    // --- Оффлайн доход и бонус ---
-    window.addEventListener('load', () => {
-        // Восстановление темы
-        if (localStorage.getItem('dark') === 'true') document.body.classList.add('dark-mode');
-        
-        // Оффлайн доход (используем lastSeen, сохранённый при выгрузке страницы)
+    // Оффлайн доход и ежедневный бонус (загружаются после инициализации)
+    function loadOfflineBonus() {
         const lastSeen = localStorage.getItem('lastSeen');
         if (lastSeen && autoClickers > 0) {
             const offSec = Math.min(Math.floor((Date.now() - parseInt(lastSeen)) / 1000), 14400);
-            const inc = offSec * autoClickers;
+            const inc = offSec * autoClickers * getIncomeMultiplier();
             if (inc > 0) {
                 score += inc;
-                // проверим повышение уровня после оффлайн дохода
                 checkAndApplyLevelUp();
                 updateDisplay();
-                document.getElementById('offlineText').innerText = `Доход за ${Math.floor(offSec/60)} мин: ${inc} 💰`;
+                document.getElementById('offlineText').innerText = `Доход за ${Math.floor(offSec/60)} мин: ${Math.floor(inc)} 💰 (x${getIncomeMultiplier().toFixed(2)})`;
                 document.getElementById('offlineModal').style.display = 'flex';
             }
         }
-        
-        // Ежедневный бонус
         const today = new Date().toDateString();
         if (localStorage.getItem('lastBonus') !== today) {
             score += 500;
-            checkAndApplyLevelUp(); // возможно уровень поднимется от бонуса
+            checkAndApplyLevelUp();
             updateDisplay();
             document.getElementById('bonusText').innerText = "+500 за вход сегодня!";
             document.getElementById('bonusModal').style.display = "flex";
             localStorage.setItem('lastBonus', today);
         }
-        
         updateDisplay();
-    });
+        updatePrestigeUI();
+    }
     
-    // Сохраняем время последнего выхода перед закрытием страницы (не при каждом апдейте)
+    // ======================== ИНИЦИАЛИЗАЦИЯ VK BRIDGE С ЛОУДЕРОМ ========================
+    const appLoader = document.getElementById('app-loader');
+    const mainContent = document.querySelector('.main-content');
+    
+    function hideLoaderAndShowApp() {
+        if (appLoader) {
+            appLoader.style.opacity = '0';
+            setTimeout(() => {
+                if (appLoader) appLoader.style.display = 'none';
+            }, 500);
+        }
+        if (mainContent) mainContent.style.visibility = 'visible';
+        // После показа приложения запускаем оффлайн-бонусы и обновления
+        loadOfflineBonus();
+    }
+    
+    function showErrorScreen(message) {
+        if (appLoader) {
+            appLoader.innerHTML = `<div style="text-align:center; padding:20px;">
+                <h2>⚠️ Ошибка загрузки</h2>
+                <p style="color: #e74c3c;">${message}</p>
+                <button onclick="window.location.reload();" style="margin-top:20px; padding:10px 20px; background:var(--accent-color); border:none; border-radius:8px; color:white;">Обновить страницу</button>
+            </div>`;
+        } else {
+            alert(`Ошибка загрузки: ${message}`);
+        }
+    }
+    
+    async function initVK() {
+        // Если VK Bridge не загрузился, но приложение открыто не во ВКонтакте (обычный браузер) - запускаем демо-режим
+        if (typeof vkBridge === 'undefined') {
+            console.warn("Библиотека VK Bridge не загружена.");
+            // Проверяем, не во ВКонтакте ли мы (по фрейму или по наличию параметров)
+            if (window.self === window.top && !window.location.search.includes('vk_access_token')) {
+                console.log("Демо-режим: запуск без VK Bridge");
+                hideLoaderAndShowApp();
+            } else {
+                showErrorScreen("Не удалось загрузить VK Bridge. Попробуйте перезагрузить приложение.");
+            }
+            return;
+        }
+        
+        try {
+            // Шаг 1: Ожидаем готовности моста
+            await vkBridge.ready();
+            console.log("VK Bridge готов");
+            
+            // Шаг 2: Инициализация приложения
+            await vkBridge.send("VKWebAppInit");
+            console.log("VKWebAppInit отправлен");
+            
+            // Шаг 3: Сообщаем о завершении загрузки (критически важно)
+            if (vkBridge.supports('VKWebAppLoadingCompleted')) {
+                await vkBridge.send("VKWebAppLoadingCompleted", {});
+                console.log("VKWebAppLoadingCompleted отправлен");
+            } else {
+                console.warn("VKWebAppLoadingCompleted не поддерживается, используем fallback");
+            }
+            
+            // Всё успешно — показываем игру
+            hideLoaderAndShowApp();
+            
+        } catch (error) {
+            console.error("Ошибка инициализации VK Bridge:", error);
+            showErrorScreen(`Не удалось инициализировать приложение. Ошибка: ${error.message || error}. Попробуйте перезагрузить.`);
+        }
+    }
+    
+    // Сохраняем время последнего выхода
     window.addEventListener('beforeunload', () => {
         localStorage.setItem('lastSeen', Date.now());
     });
+    if (!localStorage.getItem('lastSeen')) localStorage.setItem('lastSeen', Date.now());
     
-    // Инициализируем lastSeen, если его нет (при первом запуске)
-    if (!localStorage.getItem('lastSeen')) {
-        localStorage.setItem('lastSeen', Date.now());
-    }
+    // Восстанавливаем тему из сохранённого
+    if (localStorage.getItem('dark') === 'true') document.body.classList.add('dark-mode');
+    
+    // Стартуем инициализацию после полной загрузки DOM
+    window.addEventListener('load', () => {
+        // Показываем лоадер, а основной контент скрыт (по умолчанию visibility:hidden)
+        initVK();
+    });
 </script>
 </body>
 </html>
