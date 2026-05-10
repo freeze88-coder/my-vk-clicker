@@ -147,6 +147,20 @@
     const multiplierDisplaySpan = document.getElementById('multiplierDisplay');
     const prestigeBtn = document.getElementById('prestigeBtn');
     
+    // Throttle для записи в localStorage (не чаще 1 раза в секунду)
+    let saveTimeout = null;
+    function throttledSave() {
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            localStorage.setItem('score', score);
+            localStorage.setItem('energy', energy);
+            localStorage.setItem('level', level);
+            localStorage.setItem('autoClickers', autoClickers);
+            localStorage.setItem('prestigeLevel', prestigeLevel);
+            saveTimeout = null;
+        }, 200);
+    }
+    
     // ---------------------------- ИГРОВЫЕ ФУНКЦИИ ----------------------------
     function updatePrestigeUI() {
         prestigeCountSpan.innerText = prestigeLevel;
@@ -189,27 +203,26 @@
         document.getElementById('buyAutoClicker').disabled = score < autoPrice;
         updatePrestigeUI();
         
-        localStorage.setItem('score', score);
-        localStorage.setItem('energy', energy);
-        localStorage.setItem('level', level);
-        localStorage.setItem('autoClickers', autoClickers);
-        localStorage.setItem('prestigeLevel', prestigeLevel);
+        throttledSave(); // сохраняем с задержкой
     }
     
     function handleAction(e) {
         if (energy >= 1) {
-            let gain = 1 * getIncomeMultiplier();
+            // Округляем доход до целого числа
+            let gain = Math.floor(1 * getIncomeMultiplier());
             score += gain;
             energy--;
             let x, y;
             if (e.clientX) { x = e.clientX; y = e.clientY; }
             else if (e.touches && e.touches[0]) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
             else { const rect = btn.getBoundingClientRect(); x = rect.left + rect.width/2; y = rect.top + rect.height/2; }
-            createFloatingText(x, y, `+${gain.toFixed(1)}`);
+            createFloatingText(x, y, `+${gain}`);
             createParticles(x, y);
             checkAndApplyLevelUp();
             updateDisplay();
-            if (typeof vkBridge !== 'undefined') {
+            
+            // Тактильный отклик с проверкой supports
+            if (typeof vkBridge !== 'undefined' && vkBridge.supports('VKWebAppTapticImpactOccurred')) {
                 vkBridge.send("VKWebAppTapticImpactOccurred", {"style": "light"}).catch(()=>{});
             }
         } else {
@@ -265,12 +278,11 @@
         updateDisplay();
         updatePrestigeUI();
         createFloatingText(window.innerWidth/2, window.innerHeight/2, `✨ ПРЕСТИЖ ${prestigeLevel}!\nМножитель ×${getIncomeMultiplier().toFixed(2)}`, "#ffd700");
-        localStorage.setItem('prestigeLevel', prestigeLevel);
         closeModal('prestigeModal');
     }
     
-    // Обработчики кнопок
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(e); }, { passive: false });
+    // Обработчики кнопок (убрали лишний e.preventDefault)
+    btn.addEventListener('touchstart', handleAction, { passive: false });
     btn.addEventListener('click', (e) => { if (e.pointerType !== 'touch') handleAction(e); });
     
     document.getElementById('buyAutoClicker').onclick = () => {
@@ -285,7 +297,7 @@
     setInterval(() => {
         if (autoClickers > 0) {
             let autoGain = autoClickers * getIncomeMultiplier();
-            score += autoGain;
+            score += Math.floor(autoGain);
             checkAndApplyLevelUp();
             updateDisplay();
         }
@@ -306,19 +318,35 @@
     document.getElementById('confirmPrestigeBtn').onclick = () => performPrestige();
     document.getElementById('cancelPrestigeBtn').onclick = () => closeModal('prestigeModal');
     
-    // VK и другие кнопки
+    // VK и другие кнопки с проверкой supports
     document.getElementById('leaderboardBtn').onclick = () => {
-        if (typeof vkBridge !== 'undefined') vkBridge.send("VKWebAppShowLeaderBoardBox", {user_result: Math.floor(score)}).catch(()=>{});
-        else alert("Доступно только в VK Mini App");
+        if (typeof vkBridge !== 'undefined' && vkBridge.supports('VKWebAppShowLeaderBoardBox')) {
+            vkBridge.send("VKWebAppShowLeaderBoardBox", {user_result: Math.floor(score)}).catch(()=>{});
+        } else {
+            alert("Доступно только в VK Mini App");
+        }
     };
     document.getElementById('shareBtn').onclick = () => {
-        if (typeof vkBridge !== 'undefined') vkBridge.send("VKWebAppShowWallPostBox", {message: `Мой счёт: ${Math.floor(score)}! Множитель x${getIncomeMultiplier().toFixed(2)}`}).catch(()=>{});
-        else alert("Доступно только в VK Mini App");
+        if (typeof vkBridge !== 'undefined' && vkBridge.supports('VKWebAppShowWallPostBox')) {
+            vkBridge.send("VKWebAppShowWallPostBox", {message: `Мой счёт: ${Math.floor(score)}! Множитель x${getIncomeMultiplier().toFixed(2)}`}).catch(()=>{});
+        } else {
+            alert("Доступно только в VK Mini App");
+        }
     };
     document.getElementById('adBtn').onclick = () => {
-        if (typeof vkBridge !== 'undefined') {
-            vkBridge.send("VKWebAppShowNativeAds", {ad_format: "reward"}).then(data => { if(data.result) { energy = Math.min(maxEnergy, energy + 50); updateDisplay(); } }).catch(()=>{});
-        } else alert("Реклама доступна только в VK Mini App");
+        if (typeof vkBridge !== 'undefined' && vkBridge.supports('VKWebAppShowRewardedVideo')) {
+            vkBridge.send("VKWebAppShowRewardedVideo", {})
+                .then(data => { 
+                    if (data.result) { 
+                        energy = Math.min(maxEnergy, energy + 50); 
+                        updateDisplay(); 
+                        createFloatingText(window.innerWidth/2, window.innerHeight/2, "+50 энергии", "#4caf50");
+                    } 
+                })
+                .catch(() => alert("Реклама временно недоступна"));
+        } else {
+            alert("Реклама доступна только в VK Mini App");
+        }
     };
     
     // Тёмная тема
@@ -333,12 +361,12 @@
         const lastSeen = localStorage.getItem('lastSeen');
         if (lastSeen && autoClickers > 0) {
             const offSec = Math.min(Math.floor((Date.now() - parseInt(lastSeen)) / 1000), 14400);
-            const inc = offSec * autoClickers * getIncomeMultiplier();
+            const inc = Math.floor(offSec * autoClickers * getIncomeMultiplier());
             if (inc > 0) {
                 score += inc;
                 checkAndApplyLevelUp();
                 updateDisplay();
-                document.getElementById('offlineText').innerText = `Доход за ${Math.floor(offSec/60)} мин: ${Math.floor(inc)} 💰 (x${getIncomeMultiplier().toFixed(2)})`;
+                document.getElementById('offlineText').innerText = `Доход за ${Math.floor(offSec/60)} мин: ${inc} 💰 (x${getIncomeMultiplier().toFixed(2)})`;
                 document.getElementById('offlineModal').style.display = 'flex';
             }
         }
