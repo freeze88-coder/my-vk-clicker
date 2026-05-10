@@ -14,7 +14,7 @@
             height: 100vh; margin: 0; font-family: -apple-system, sans-serif;
             overflow: hidden; touch-action: none; -webkit-user-select: none;
         }
-        /* Стили лоадера (показывается первым) */
+        /* Лоадер (экран загрузки) */
         #app-loader {
             position: fixed;
             top: 0;
@@ -40,7 +40,7 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .loader-text { margin-top: 15px; color: var(--text-color); font-size: 16px; }
         
-        /* Основной контент изначально скрыт (покажется после инициализации) */
+        /* Основной контент изначально невидим */
         .main-content {
             visibility: hidden;
             display: flex;
@@ -76,18 +76,17 @@
         #themeToggle { position: absolute; top: 20px; right: 20px; font-size: 24px; cursor: pointer; }
         .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: var(--card-bg); padding: 30px; border-radius: 20px; text-align: center; width: 80%; max-width: 300px; }
-        .prestige-badge { font-weight: bold; color: gold; }
     </style>
 </head>
 <body>
 
-    <!-- Лоадер (показывается сразу) -->
+    <!-- Лоадер (видим всегда до инициализации) -->
     <div id="app-loader">
         <div class="spinner"></div>
         <div class="loader-text">Загрузка приложения...</div>
     </div>
 
-    <!-- Основной контент игры (скрыт до инициализации) -->
+    <!-- Основной контент -->
     <div class="main-content">
         <div id="themeToggle">🌓</div>
         <div class="score-container">💰 <span id="score">0</span></div>
@@ -117,7 +116,7 @@
     <div id="prestigeModal" class="modal"><div class="modal-content"><h2>🌟 ПРЕСТИЖ</h2><p id="prestigeModalText"></p><button class="upgrade-btn" id="confirmPrestigeBtn">ДА, СБРОСИТЬ ВСЁ</button><button class="upgrade-btn" id="cancelPrestigeBtn" style="margin-top:10px;">ОТМЕНА</button></div></div>
 
 <script>
-    // ======================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ИГРЫ ========================
+    // ---------------------------- ИГРОВЫЕ ДАННЫЕ ----------------------------
     let score = parseInt(localStorage.getItem('score')) || 0;
     let energy = parseInt(localStorage.getItem('energy')) || 100;
     let level = parseInt(localStorage.getItem('level')) || 1;
@@ -148,14 +147,14 @@
     const multiplierDisplaySpan = document.getElementById('multiplierDisplay');
     const prestigeBtn = document.getElementById('prestigeBtn');
     
-    // ======================== ИГРОВЫЕ ФУНКЦИИ ========================
+    // ---------------------------- ИГРОВЫЕ ФУНКЦИИ ----------------------------
     function updatePrestigeUI() {
         prestigeCountSpan.innerText = prestigeLevel;
         multiplierDisplaySpan.innerText = getIncomeMultiplier().toFixed(2);
         const required = getRequiredPrestigeLevel();
         if (level >= required) {
             prestigeBtn.disabled = false;
-            prestigeBtn.innerText = `🌟 ПРЕСТИЖ (доступно с ур.${required}) | ×${getIncomeMultiplier().toFixed(2)} сейчас → ×${(getIncomeMultiplier() + 0.3).toFixed(2)}`;
+            prestigeBtn.innerText = `🌟 ПРЕСТИЖ (доступно с ур.${required}) | ×${getIncomeMultiplier().toFixed(2)} → ×${(getIncomeMultiplier() + 0.3).toFixed(2)}`;
         } else {
             prestigeBtn.disabled = true;
             prestigeBtn.innerText = `🌟 ПРЕСТИЖ (нужен ур.${required})`;
@@ -270,7 +269,7 @@
         closeModal('prestigeModal');
     }
     
-    // Подключение обработчиков
+    // Обработчики кнопок
     btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(e); }, { passive: false });
     btn.addEventListener('click', (e) => { if (e.pointerType !== 'touch') handleAction(e); });
     
@@ -296,7 +295,7 @@
         if (energy < maxEnergy) { energy++; updateDisplay(); }
     }, 2500);
     
-    // Модалки престижа
+    // Модалка престижа
     const prestigeModal = document.getElementById('prestigeModal');
     prestigeBtn.onclick = () => {
         if (level >= getRequiredPrestigeLevel()) {
@@ -307,7 +306,7 @@
     document.getElementById('confirmPrestigeBtn').onclick = () => performPrestige();
     document.getElementById('cancelPrestigeBtn').onclick = () => closeModal('prestigeModal');
     
-    // Кнопки VK
+    // VK и другие кнопки
     document.getElementById('leaderboardBtn').onclick = () => {
         if (typeof vkBridge !== 'undefined') vkBridge.send("VKWebAppShowLeaderBoardBox", {user_result: Math.floor(score)}).catch(()=>{});
         else alert("Доступно только в VK Mini App");
@@ -329,7 +328,7 @@
     };
     window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
     
-    // Оффлайн доход и ежедневный бонус (загружаются после инициализации)
+    // ---------------------------- ОФФЛАЙН И ЕЖЕДНЕВНЫЙ БОНУС ----------------------------
     function loadOfflineBonus() {
         const lastSeen = localStorage.getItem('lastSeen');
         if (lastSeen && autoClickers > 0) {
@@ -356,7 +355,7 @@
         updatePrestigeUI();
     }
     
-    // ======================== ИНИЦИАЛИЗАЦИЯ VK BRIDGE С ЛОУДЕРОМ ========================
+    // ---------------------------- ИНИЦИАЛИЗАЦИЯ VK BRIDGE ----------------------------
     const appLoader = document.getElementById('app-loader');
     const mainContent = document.querySelector('.main-content');
     
@@ -368,7 +367,6 @@
             }, 500);
         }
         if (mainContent) mainContent.style.visibility = 'visible';
-        // После показа приложения запускаем оффлайн-бонусы и обновления
         loadOfflineBonus();
     }
     
@@ -385,57 +383,46 @@
     }
     
     async function initVK() {
-        // Если VK Bridge не загрузился, но приложение открыто не во ВКонтакте (обычный браузер) - запускаем демо-режим
         if (typeof vkBridge === 'undefined') {
-            console.warn("Библиотека VK Bridge не загружена.");
-            // Проверяем, не во ВКонтакте ли мы (по фрейму или по наличию параметров)
+            console.warn("VK Bridge не загружен");
             if (window.self === window.top && !window.location.search.includes('vk_access_token')) {
-                console.log("Демо-режим: запуск без VK Bridge");
+                console.log("Демо-режим: запуск вне VK");
                 hideLoaderAndShowApp();
             } else {
-                showErrorScreen("Не удалось загрузить VK Bridge. Попробуйте перезагрузить приложение.");
+                showErrorScreen("Не удалось загрузить VK Bridge. Перезагрузите приложение.");
             }
             return;
         }
         
         try {
-            // Шаг 1: Ожидаем готовности моста
             await vkBridge.ready();
             console.log("VK Bridge готов");
-            
-            // Шаг 2: Инициализация приложения
             await vkBridge.send("VKWebAppInit");
             console.log("VKWebAppInit отправлен");
-            
-            // Шаг 3: Сообщаем о завершении загрузки (критически важно)
             if (vkBridge.supports('VKWebAppLoadingCompleted')) {
                 await vkBridge.send("VKWebAppLoadingCompleted", {});
                 console.log("VKWebAppLoadingCompleted отправлен");
             } else {
-                console.warn("VKWebAppLoadingCompleted не поддерживается, используем fallback");
+                console.warn("VKWebAppLoadingCompleted не поддерживается");
             }
-            
-            // Всё успешно — показываем игру
             hideLoaderAndShowApp();
-            
         } catch (error) {
-            console.error("Ошибка инициализации VK Bridge:", error);
-            showErrorScreen(`Не удалось инициализировать приложение. Ошибка: ${error.message || error}. Попробуйте перезагрузить.`);
+            console.error("Ошибка инициализации:", error);
+            showErrorScreen(`Ошибка: ${error.message || error}. Перезагрузите.`);
         }
     }
     
-    // Сохраняем время последнего выхода
+    // Сохранение времени выхода
     window.addEventListener('beforeunload', () => {
         localStorage.setItem('lastSeen', Date.now());
     });
     if (!localStorage.getItem('lastSeen')) localStorage.setItem('lastSeen', Date.now());
     
-    // Восстанавливаем тему из сохранённого
+    // Восстановление темы
     if (localStorage.getItem('dark') === 'true') document.body.classList.add('dark-mode');
     
-    // Стартуем инициализацию после полной загрузки DOM
+    // Старт
     window.addEventListener('load', () => {
-        // Показываем лоадер, а основной контент скрыт (по умолчанию visibility:hidden)
         initVK();
     });
 </script>
